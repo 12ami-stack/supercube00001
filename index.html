@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ルービック・カラー・ソーター (Rubik's Color Sorter)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #111e25, #080c10);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        .hud-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            pointer-events: auto;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 12px 24px;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #score-box { border-left: 5px solid #00ffcc; }
+        #lives-box { border-left: 5px solid #ff4a4a; }
+
+        #instructions {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            padding: 10px 25px;
+            border-radius: 30px;
+            color: #ccc;
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+
+        /* 画面中央の案内用オーバーレイ */
+        #screen-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(7, 13, 18, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: auto;
+            transition: opacity 0.4s ease;
+        }
+
+        .modal-content {
+            background: linear-gradient(145deg, #182631, #0f1922);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 450px;
+            width: 85%;
+            text-align: center;
+            color: #ffffff;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 28px;
+            background: linear-gradient(45deg, #ffdd67, #ff5e62);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+        }
+
+        .rules {
+            text-align: left;
+            background: rgba(0,0,0,0.2);
+            padding: 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #ddd;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .rules ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .rules li {
+            margin-bottom: 8px;
+        }
+
+        .color-preview {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .color-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+
+        .btn {
+            background: linear-gradient(90deg, #00c6ff, #0072ff);
+            border: none;
+            color: white;
+            padding: 14px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 114, 255, 0.4);
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 114, 255, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        #gameover-title {
+            color: #ff4a4a;
+            background: none;
+            -webkit-text-fill-color: initial;
+        }
+        
+        .score-display {
+            font-size: 22px;
+            margin: 20px 0;
+            color: #00ffcc;
+            font-weight: bold;
+        }
+    </style>
+    <!-- Three.js and Cannon.js (Physics Engine) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="hud-panel">
+            <div class="stat-box" id="score-box">SCORE: <span id="score-val">0</span></div>
+            <div class="stat-box" id="lives-box">LIVES: <span id="lives-val">3</span></div>
+        </div>
+        <div id="instructions">🖱️ ドラッグでキューブ全体を回転</div>
+    </div>
+
+    <!-- スタート / ゲームオーバー画面 -->
+    <div id="screen-overlay">
+        <div class="modal-content" id="modal-start">
+            <h1>RUBIK'S FLOW</h1>
+            <div class="rules">
+                <strong>【ゲームルール】</strong>
+                <ul>
+                    <li>空から落ちてくる色玉を、マウスドラッグでルービックキューブを傾けて受け止めてください。</li>
+                    <li>玉はキューブの上面に衝突すると、物理演算により傾きに沿ってリアルに滑り落ちます。</li>
+                    <li>キューブの下部には、色に対応した<b>4つの仕分けケース（赤・緑・青・黄）</b>が設置されています。</li>
+                    <li>玉を<b>同じ色のケース</b>へ上手に滑り込ませれば得点！</li>
+                    <li>違うケースに入ったり、場外へ落ちるとライフが減少します。</li>
+                </ul>
+                <div class="color-preview">
+                    対象色: 
+                    <div class="color-dot" style="background:#e63946;"></div>
+                    <div class="color-dot" style="background:#2a9d8f;"></div>
+                    <div class="color-dot" style="background:#457b9d;"></div>
+                    <div class="color-dot" style="background:#e9c46a;"></div>
+                </div>
+            </div>
+            <button class="btn" id="start-btn">ゲーム開始</button>
+        </div>
+
+        <div class="modal-content" id="modal-gameover" style="display: none;">
+            <h1 id="gameover-title">GAME OVER</h1>
+            <div class="score-display">FINAL SCORE: <span id="final-score">0</span></div>
+            <div style="color: #aaa; margin-bottom: 25px;" id="best-score-text">BEST SCORE: 0</div>
+            <button class="btn" id="restart-btn">もう一度挑戦</button>
+        </div>
+    </div>
+
+    <script>
+        // --- ゲーム状態管理 ---
+        let gameState = "START"; // START, PLAYING, GAMEOVER
+        let score = 0;
+        let lives = 3;
+        let bestScore = localStorage.getItem("rubiks_flow_best") || 0;
+
+        // --- Three.js & Cannon.js グローバル変数 ---
+        let scene, camera, renderer;
+        let world; // 物理世界
+        let cubeGroup; // Visual キューブグループ
+        let cubePhysicsBody; // 物理キューブのベースボディ
+
+        // マウスドラッグ回転制御用
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        const targetRotation = new THREE.Quaternion();
+        const currentRotation = new THREE.Quaternion();
+
+        // オブジェクトリスト
+        let balls = []; // { mesh: ThreeMesh, body: CannonBody, colorId: int, processed: bool }
+        let bins = [];  // { mesh, body, colorId }
+
+        // カラー定義 (インデックス対応: 0=赤, 1=緑, 2=青, 3=黄)
+        const COLOR_IDS = [0, 1, 2, 3];
+        const COLORS = {
+            0: { hex: 0xe63946, name: "赤", position: new THREE.Vector3(-4, -5, 0) },   // 左
+            1: { hex: 0x2a9d8f, name: "緑", position: new THREE.Vector3(4, -5, 0) },    // 右
+            2: { hex: 0x457b9d, name: "青", position: new THREE.Vector3(0, -5, -4) },   // 奥
+            3: { hex: 0xe9c46a, name: "黄", position: new THREE.Vector3(0, -5, 4) }     // 手前
+        };
+        // キューブのマテリアル用（残りの2面はグレーで無効属性表現）
+        const CUBE_FACE_COLORS = [
+            0xe63946, // 赤
+            0x2a9d8f, // 緑
+            0x457b9d, // 青
+            0xe9c46a, // 黄
+            0x333333, // 白の代わりにダークグレー (落とすだけのダミー面)
+            0x555555  // オレンジの代わりにミディアムグレー (落とすだけのダミー面)
+        ];
+
+        // スポーンタイマー
+        let lastSpawnTime = 0;
+        let spawnInterval = 2500; // ms
+
+        // UI要素
+        const scoreValEl = document.getElementById("score-val");
+        const livesValEl = document.getElementById("lives-val");
+        const overlayEl = document.getElementById("screen-overlay");
+        const modalStart = document.getElementById("modal-start");
+        const modalGameover = document.getElementById("modal-gameover");
+        const finalScoreEl = document.getElementById("final-score");
+        const bestScoreEl = document.getElementById("best-score-text");
+
+        // --- 初期化処理 ---
+        function init() {
+            initThree();
+            initCannon();
+            createEnvironment();
+            createRubiksCube();
+            createBins();
+
+            // イベントリスナー
+            window.addEventListener('resize', onWindowResize, false);
+            setupInputEvents();
+
+            document.getElementById("start-btn").addEventListener("click", startGame);
+            document.getElementById("restart-btn").addEventListener("click", startGame);
+
+            // ループ開始
+            animate(0);
+        }
+
+        function initThree() {
+            const container = document.getElementById("canvas-container");
+            
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x0c141a, 0.015);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 8, 16);
+            camera.lookAt(0, -1, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // ライティング
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 40;
+            const d = 12;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            dirLight.shadow.bias = -0.0005;
+            scene.add(dirLight);
+
+            // 補助的な下からのライト
+            const blueLight = new THREE.DirectionalLight(0x0072ff, 0.3);
+            blueLight.position.set(-10, -10, -10);
+            scene.add(blueLight);
+        }
+
+        function initCannon() {
+            world = new CANNON.World();
+            world.gravity.set(0, -9.82, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+
+            // 摩擦・反発係数の設定
+            const defaultMaterial = new CANNON.Material("default");
+            const ballMaterial = new CANNON.Material("ball");
+            
+            const contactMaterial = new CANNON.ContactMaterial(defaultMaterial, ballMaterial, {
+                friction: 0.15,
+                restitution: 0.3
+            });
+            world.addContactMaterial(contactMaterial);
+        }
+
+        function createEnvironment() {
+            // 背景の床（はるか下方に、キャッチし損ねた玉が落ちる奈落域）
+            const floorGeo = new THREE.PlaneGeometry(100, 100);
+            const floorMat = new THREE.MeshStandardMaterial({ 
+                color: 0x070d12, 
+                roughness: 0.9 
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -12;
+            floor.receiveShadow = true;
+            scene.add(floor);
+        }
+
+        function createRubiksCube() {
+            cubeGroup = new THREE.Group();
+            
+            // 3x3x3のルービックキューブを生成
+            const size = 1.0; 
+            const gap = 0.05;
+            const offset = size + gap;
+
+            // 各面用のマテリアル配列を構築
+            const materials = CUBE_FACE_COLORS.map(color => new THREE.MeshStandardMaterial({
+                color: color,
+                roughness: 0.2,
+                metalness: 0.1,
+                side: THREE.DoubleSide
+            }));
+
+            // 内側の面用の黒マテリアル
+            const innerMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
+
+            for (let x = -1; x <= 1; x++) {
+                for (let y = -1; y <= 1; y++) {
+                    for (let z = -1; z <= 1; z++) {
+                        // 中央の完全に見えないキューブはスキップ
+                        if (x === 0 && y === 0 && z === 0) continue;
+
+                        const geometry = new THREE.BoxGeometry(size, size, size);
+                        
+                        // 外側に露出していない面を内側用黒マテリアルにする
+                        const cubeMats = [
+                            x === 1 ? materials[0] : innerMat,  // +X (赤)
+                            x === -1 ? materials[1] : innerMat, // -X (緑)
+                            y === 1 ? materials[4] : innerMat,  // +Y (グレー)
+                            y === -1 ? materials[5] : innerMat, // -Y (グレー)
+                            z === 1 ? materials[3] : innerMat,  // +Z (黄)
+                            z === -1 ? materials[2] : innerMat  // -Z (青)
+                        ];
+
+                        const piece = new THREE.Mesh(geometry, cubeMats);
+                        piece.position.set(x * offset, y * offset, z * offset);
+                        piece.castShadow = true;
+                        piece.receiveShadow = true;
+                        cubeGroup.add(piece);
+                    }
+                }
+            }
+
+            scene.add(cubeGroup);
+
+            // --- 物理エンジンの設定 ---
+            // ルービックキューブ全体の当たり判定を1つの大きな複合形状または単一ボックスで近似
+            // 玉が滑らかに滑り落ちるように、隙間のない一体のBoxShapeとして定義します
+            const totalSize = (size * 3) + (gap * 2);
+            const halfSize = totalSize / 2;
+
+            const cubeShape = new CANNON.Box(new CANNON.Vec3(halfSize, halfSize, halfSize));
+            cubePhysicsBody = new CANNON.Body({
+                mass: 0, // 質量0 = 固定物（キネマティックのように手動で回転を同期）
+                shape: cubeShape,
+                material: new CANNON.Material("default")
+            });
+            
+            world.addBody(cubePhysicsBody);
+        }
+
+        function createBins() {
+            // 下部の仕分けケースを4箇所に配置
+            Object.keys(COLORS).forEach(id => {
+                const config = COLORS[id];
+                const binGroup = new THREE.Group();
+
+                // ケースの底面
+                const bottomGeo = new THREE.BoxGeometry(2.5, 0.2, 2.5);
+                const binMat = new THREE.MeshStandardMaterial({
+                    color: config.hex,
+                    roughness: 0.3,
+                    emissive: config.hex,
+                    emissiveIntensity: 0.2
+                });
+                const bottom = new THREE.Mesh(bottomGeo, binMat);
+                bottom.castShadow = true;
+                bottom.receiveShadow = true;
+                binGroup.add(bottom);
+
+                // ケースの壁 (前後左右に配置して箱型にする)
+                const wallMat = new THREE.MeshStandardMaterial({ 
+                    color: config.hex, 
+                    transparent: true, 
+                    opacity: 0.4,
+                    roughness: 0.1
+                });
+                const wallThickness = 0.15;
+                const wallHeight = 1.2;
+
+                // 前後の壁
+                const wallZGeo = new THREE.BoxGeometry(2.5, wallHeight, wallThickness);
+                const wallFront = new THREE.Mesh(wallZGeo, wallMat);
+                wallFront.position.set(0, wallHeight/2, 1.25);
+                binGroup.add(wallFront);
+
+                const wallBack = new THREE.Mesh(wallZGeo, wallMat);
+                wallBack.position.set(0, wallHeight/2, -1.25);
+                binGroup.add(wallBack);
+
+                // 左右の壁
+                const wallXGeo = new THREE.BoxGeometry(wallThickness, wallHeight, 2.5);
+                const wallLeft = new THREE.Mesh(wallXGeo, wallMat);
+                wallLeft.position.set(-1.25, wallHeight/2, 0);
+                binGroup.add(wallLeft);
+
+                const wallRight = new THREE.Mesh(wallXGeo, wallMat);
+                wallRight.position.set(1.25, wallHeight/2, 0);
+                binGroup.add(wallRight);
+
+                // 全体位置調整
+                binGroup.position.copy(config.position);
+                scene.add(binGroup);
+
+                // --- 物理トリガー用のボディ ---
+                // 物理的には「すり抜けるセンサー」ではなく、しっかり受け止める頑丈な箱として配置
+                // 底面
+                const pBottomShape = new CANNON.Box(new CANNON.Vec3(1.25, 0.1, 1.25));
+                const pBottomBody = new CANNON.Body({
+                    mass: 0,
+                    position: new CANNON.Vec3(config.position.x, config.position.y, config.position.z)
+                });
+                pBottomBody.addShape(pBottomShape);
+                world.addBody(pBottomBody);
+
+                // 衝突判定をシンプルにするため、この底面ボディに対応する情報を保持
+                bins.push({
+                    colorId: parseInt(id),
+                    body: pBottomBody,
+                    mesh: binGroup
+                });
+
+                // 外壁用の簡易物理ウォール（玉が飛び出さないように外側をサポート）
+                const pWallShapeX = new CANNON.Box(new CANNON.Vec3(0.07, wallHeight/2, 1.25));
+                const pWallLeft = new CANNON.Body({ mass: 0, position: new CANNON.Vec3(config.position.x - 1.25, config.position.y + wallHeight/2, config.position.z) });
+                pWallLeft.addShape(pWallShapeX);
+                world.addBody(pWallLeft);
+
+                const pWallRight = new CANNON.Body({ mass: 0, position: new CANNON.Vec3(config.position.x + 1.25, config.position.y + wallHeight/2, config.position.z) });
+                pWallRight.addShape(pWallShapeX);
+                world.addBody(pWallRight);
+
+                const pWallShapeZ = new CANNON.Box(new CANNON.Vec3(1.25, wallHeight/2, 0.07));
+                const pWallFront = new CANNON.Body({ mass: 0, position: new CANNON.Vec3(config.position.x, config.position.y + wallHeight/2, config.position.z + 1.25) });
+                pWallFront.addShape(pWallShapeZ);
+                world.addBody(pWallFront);
+
+                const pWallBack = new CANNON.Body({ mass: 0, position: new CANNON.Vec3(config.position.x, config.position.y + wallHeight/2, config.position.z - 1.25) });
+                pWallBack.addShape(pWallShapeZ);
+                world.addBody(pWallBack);
+            });
+        }
+
+        // --- 玉の動的生成 ---
+        function spawnBall() {
+            if (gameState !== "PLAYING") return;
+
+            // ターゲット4色のうちランダムに決定
+            const colorId = COLOR_IDS[Math.floor(Math.random() * COLOR_IDS.length)];
+            const config = COLORS[colorId];
+
+            // ビジュアル用メッシュ
+            const radius = 0.35;
+            const ballGeo = new THREE.SphereGeometry(radius, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({
+                color: config.hex,
+                roughness: 0.1,
+                metalness: 0.1,
+                emissive: config.hex,
+                emissiveIntensity: 0.3
+            });
+            const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+
+            // 物理ボディ
+            const ballShape = new CANNON.Sphere(radius);
+            const ballBody = new CANNON.Body({
+                mass: 1.0,
+                shape: ballShape,
+                material: new CANNON.Material("ball"),
+                linearDamping: 0.05,
+                angularDamping: 0.05
+            });
+
+            // キューブの真上（少し散らす）から落とす
+            const spawnX = (Math.random() - 0.5) * 1.2;
+            const spawnZ = (Math.random() - 0.5) * 1.2;
+            ballBody.position.set(spawnX, 7, spawnZ);
+            world.addBody(ballBody);
+
+            balls.push({
+                mesh: ballMesh,
+                body: ballBody,
+                colorId: colorId,
+                processed: false
+            });
+        }
+
+        // --- 入力制御 (クォータニオンによる直感的ドラッグ回転) ---
+        function setupInputEvents() {
+            const container = document.getElementById("canvas-container");
+
+            function onPointerDown(e) {
+                if (gameState !== "PLAYING") return;
+                isDragging = true;
+                previousMousePosition = {
+                    x: e.clientX || e.touches[0].clientX,
+                    y: e.clientY || e.touches[0].clientY
+                };
+            }
+
+            function onPointerMove(e) {
+                if (!isDragging || gameState !== "PLAYING") return;
+
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+                if (clientX === undefined || clientY === undefined) return;
+
+                const deltaMove = {
+                    x: clientX - previousMousePosition.x,
+                    y: clientY - previousMousePosition.y
+                };
+
+                // カメラの向きに基づいた回転軸の決定
+                // マウスの左右の動き(deltaMove.x) -> 世界のY軸を中心に回転
+                // マウスの上下の動き(deltaMove.y) -> カメラの右方向のローカル軸を中心に回転
+                const deltaRotationQuaternion = new THREE.Quaternion()
+                    .setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaMove.x * 0.007)
+                    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), deltaMove.y * 0.007));
+
+                targetRotation.premultiply(deltaRotationQuaternion);
+
+                previousMousePosition = {
+                    x: clientX,
+                    y: clientY
+                };
+            }
+
+            function onPointerUp() {
+                isDragging = false;
+            }
+
+            // マウスイベント
+            container.addEventListener('mousedown', onPointerDown);
+            window.addEventListener('mousemove', onPointerMove);
+            window.addEventListener('mouseup', onPointerUp);
+
+            // タッチイベント (スマホ対応)
+            container.addEventListener('touchstart', onPointerDown, { passive: true });
+            window.addEventListener('touchmove', onPointerMove, { passive: true });
+            window.addEventListener('touchend', onPointerUp);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- ゲームフロー管理 ---
+        function startGame() {
+            // スコア初期化
+            score = 0;
+            lives = 9;
+            scoreValEl.innerText = score;
+            livesValEl.innerText = lives;
+
+            // 残存する玉のクリーンアップ
+            balls.forEach(b => {
+                scene.remove(b.mesh);
+                world.remove(b.body);
+            });
+            balls = [];
+
+            // キューブ回転のリセット
+            targetRotation.set(0, 0, 0, 1);
+            currentRotation.set(0, 0, 0, 1);
+            cubeGroup.quaternion.set(0, 0, 0, 1);
+            cubePhysicsBody.quaternion.set(0, 0, 0, 1);
+
+            // UI切り替え
+            overlayEl.style.opacity = 0;
+            setTimeout(() => {
+                overlayEl.style.display = "none";
+                gameState = "PLAYING";
+                lastSpawnTime = performance.now();
+            }, 400);
+        }
+
+        function gameOver() {
+            gameState = "GAMEOVER";
+            finalScoreEl.innerText = score;
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem("rubiks_flow_best", bestScore);
+            }
+            bestScoreEl.innerText = "BEST SCORE: " + bestScore;
+
+            modalStart.style.display = "none";
+            modalGameover.style.display = "block";
+            overlayEl.style.display = "flex";
+            setTimeout(() => {
+                overlayEl.style.opacity = 1;
+            }, 10);
+        }
+
+        function updateLogic(deltaTime, timestamp) {
+            if (gameState !== "PLAYING") return;
+
+            // --- 難易度調整 (スコアに応じて徐々に加速) ---
+            const dynamicInterval = Math.max(1000, spawnInterval - (score * 80));
+
+            // スコープタイマー判定
+            if (timestamp - lastSpawnTime > dynamicInterval) {
+                spawnBall();
+                lastSpawnTime = timestamp;
+            }
+
+            // --- 判定ロジック ---
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const ball = balls[i];
+                const bPos = ball.body.position;
+
+                // まだ未処理の玉に対するエリア・仕分けチェック
+                if (!ball.processed) {
+                    // 各ケース（Bin）との距離・位置判定
+                    bins.forEach(bin => {
+                        const binPos = bin.body.position;
+                        // ケース内に収まっているかどうかの判定 (高さがケース付近かつ平面的に箱の中)
+                        if (bPos.y < binPos.y + 1.2 && bPos.y > binPos.y - 0.2) {
+                            const distXZ = Math.sqrt(Math.pow(bPos.x - binPos.x, 2) + Math.pow(bPos.z - binPos.z, 2));
+                            if (distXZ < 1.2) {
+                                ball.processed = true;
+                                
+                                // 色が一致しているか判定
+                                if (ball.colorId === bin.colorId) {
+                                    score += 10;
+                                    scoreValEl.innerText = score;
+                                    // フラッシュなどの視覚演出をここに挟むことも可能
+                                } else {
+                                    lives--;
+                                    livesValEl.innerText = lives;
+                                    if (lives <= 0) gameOver();
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // 画面外（奈落の底）へ落ちた場合の処理
+                if (bPos.y < -10) {
+                    if (!ball.processed) {
+                        // ケースに掠りもせず落ちた場合もライフ減少
+                        lives--;
+                        livesValEl.innerText = lives;
+                        if (lives <= 0) gameOver();
+                    }
+                    
+                    // 物理世界と描画世界から削除
+                    world.remove(ball.body);
+                    scene.remove(ball.mesh);
+                    balls.splice(i, 1);
+                }
+            }
+        }
+
+        // --- メインループ ---
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            const fixedTimeStep = 1 / 60;
+            // 物理世界の時間を進める
+            world.step(fixedTimeStep);
+
+            // ルービックキューブの回転を滑らかに補間 (Slerp)
+            currentRotation.slerp(targetRotation, 0.1);
+            cubeGroup.quaternion.copy(currentRotation);
+            
+            // Cannon.js の物理ボディにも回転を完全に同期させる
+            cubePhysicsBody.quaternion.set(
+                currentRotation.x,
+                currentRotation.y,
+                currentRotation.z,
+                currentRotation.w
+            );
+
+            // 玉の物理シミュレーション結果をレンダリング用メッシュに反映
+            balls.forEach(ball => {
+                ball.mesh.position.copy(ball.body.position);
+                ball.mesh.quaternion.copy(ball.body.quaternion);
+            });
+
+            // ゲームロジックアップデート
+            updateLogic(fixedTimeStep, timestamp);
+
+            // 描画
+            renderer.render(scene, camera);
+        }
+
+        // 起動
+        window.onload = init;
+    </script>
+</body>
+</html>
